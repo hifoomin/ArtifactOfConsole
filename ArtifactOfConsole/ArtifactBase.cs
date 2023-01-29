@@ -4,7 +4,7 @@ using RoR2;
 using System;
 using UnityEngine;
 
-namespace ArtifactOfBlindness.Artifact
+namespace ArtifactOfConsole.Artifact
 {
     public abstract class ArtifactBase<T> : ArtifactBase where T : ArtifactBase<T>
     {
@@ -32,7 +32,7 @@ namespace ArtifactOfBlindness.Artifact
         public ArtifactDef ArtifactDef;
 
         //For use only after the run has started.
-        public bool ArtifactEnabled => RunArtifactManager.instance.IsArtifactEnabled(ArtifactDef);
+        public bool ArtifactEnabled => Run.instance ? RunArtifactManager.instance.IsArtifactEnabled(ArtifactDef) : false;
 
         public abstract void Init(ConfigFile config);
 
