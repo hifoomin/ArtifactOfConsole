@@ -11,6 +11,7 @@ using EntityStates.Croco;
 using RoR2.CharacterAI;
 using UnityEngine.Networking;
 using RoR2.Projectile;
+using System.Collections;
 
 namespace ArtifactOfConsole.Artifact
 {
@@ -55,136 +56,42 @@ namespace ArtifactOfConsole.Artifact
             On.RoR2.GlobalEventManager.OnHitAll += OverloadingTwoOrbs;
             IL.RoR2.GlobalEventManager.OnHitEnemy += RemoveBandsOnHit;
             On.RoR2.HealthComponent.TakeDamage += AddBands;
+            On.RoR2.HealthComponent.Awake += HealthComponent_Awake;
+            On.RoR2.UI.HUD.Awake += HUD_Awake;
             Changes();
+        }
+
+        private void HUD_Awake(On.RoR2.UI.HUD.orig_Awake orig, RoR2.UI.HUD self)
+        {
+            if (ArtifactEnabled)
+            {
+                var mainUIArea = self.mainUIPanel.transform;
+                var springCanvas = mainUIArea.GetChild(0);
+
+                for (int i = 0; i < springCanvas.childCount; i++)
+                {
+                    springCanvas.GetChild(i).localRotation = Quaternion.identity;
+                }
+
+                var healthBar = self.healthBar.transform;
+                var shrunkenRoot = healthBar.GetChild(0);
+                shrunkenRoot.transform.localScale = new Vector3(1, 1.5f, 1);
+
+                var text = healthBar.GetChild(1);
+                text.transform.localScale = new Vector3(1.5f, 1.5f, 1.5f);
+            }
+            orig(self);
+        }
+
+        private void HealthComponent_Awake(On.RoR2.HealthComponent.orig_Awake orig, HealthComponent self)
+        {
+            if (ArtifactEnabled) self.gameObject.AddComponent<StupidBandController>();
+            orig(self);
         }
 
         private void AddBands(On.RoR2.HealthComponent.orig_TakeDamage orig, HealthComponent self, DamageInfo damageInfo)
         {
             orig(self, damageInfo);
-
-            if (ArtifactEnabled)
-            {
-                var attacker = damageInfo.attacker;
-                if (attacker)
-                {
-                    // attackerBody is me
-                    // self is enemy
-
-                    var attackerBody = attacker.GetComponent<CharacterBody>();
-                    if (attackerBody)
-                    {
-                        var inventory = attackerBody.inventory;
-                        if (!damageInfo.procChainMask.HasProc(ProcType.Rings) && damageInfo.damage / attackerBody.damage >= 4f)
-                        {
-                            Main.ACLogger.LogError("passed damage threshold check");
-                            var aimOrigin = attackerBody.aimOrigin;
-
-                            if (attackerBody.HasBuff(RoR2Content.Buffs.ElementalRingsReady) && inventory)
-                            {
-                                Main.ACLogger.LogError("body has elementalrings buff ready");
-                                int itemCount9 = inventory.GetItemCount(RoR2Content.Items.IceRing);
-                                int itemCount10 = inventory.GetItemCount(RoR2Content.Items.FireRing);
-                                attackerBody.RemoveBuff(RoR2Content.Buffs.ElementalRingsReady);
-                                int num29 = 1;
-                                while (num29 <= 10f)
-                                {
-                                    attackerBody.AddTimedBuff(RoR2Content.Buffs.ElementalRingsCooldown, (float)num29);
-                                    num29++;
-                                }
-                                ProcChainMask procChainMask5 = damageInfo.procChainMask;
-                                procChainMask5.AddProc(ProcType.Rings);
-                                Vector3 position2 = damageInfo.position;
-                                if (itemCount9 > 0 && attackerBody)
-                                {
-                                    Main.ACLogger.LogError("attackerBody has runald's band");
-                                    float num30 = 2.5f * itemCount9;
-                                    float num31 = Util.OnHitProcDamage(damageInfo.damage, attackerBody.damage, num30);
-                                    DamageInfo damageInfo2 = new()
-                                    {
-                                        damage = num31,
-                                        damageColorIndex = DamageColorIndex.Item,
-                                        damageType = DamageType.Generic,
-                                        attacker = damageInfo.attacker,
-                                        crit = damageInfo.crit,
-                                        force = Vector3.zero,
-                                        inflictor = null,
-                                        position = position2,
-                                        procChainMask = procChainMask5,
-                                        procCoefficient = 1f
-                                    };
-                                    EffectManager.SimpleImpactEffect(LegacyResourcesAPI.Load<GameObject>("Prefabs/Effects/ImpactEffects/IceRingExplosion"), position2, Vector3.up, true);
-                                    attackerBody.AddTimedBuff(RoR2Content.Buffs.Slow80, 3f * (float)itemCount9);
-                                    self.TakeDamage(damageInfo2);
-                                }
-                                if (itemCount10 > 0)
-                                {
-                                    Main.ACLogger.LogError("attackerBody exists and self.body.inventory has KJARO band");
-                                    GameObject gameObject = LegacyResourcesAPI.Load<GameObject>("Prefabs/Projectiles/FireTornado");
-                                    float resetInterval = gameObject.GetComponent<ProjectileOverlapAttack>().resetInterval;
-                                    float lifetime = gameObject.GetComponent<ProjectileSimple>().lifetime;
-                                    float num32 = 3f * (float)itemCount10;
-                                    float num33 = Util.OnHitProcDamage(damageInfo.damage, attackerBody.damage, num32) / lifetime * resetInterval;
-                                    float num34 = 0f;
-                                    Quaternion quaternion2 = Quaternion.identity;
-                                    Vector3 vector2 = position2 - aimOrigin;
-                                    vector2.y = 0f;
-                                    if (vector2 != Vector3.zero)
-                                    {
-                                        num34 = -1f;
-                                        quaternion2 = Util.QuaternionSafeLookRotation(vector2, Vector3.up);
-                                    }
-                                    ProjectileManager.instance.FireProjectile(new FireProjectileInfo
-                                    {
-                                        damage = num33,
-                                        crit = damageInfo.crit,
-                                        damageColorIndex = DamageColorIndex.Item,
-                                        position = position2,
-                                        procChainMask = procChainMask5,
-                                        force = 0f,
-                                        owner = damageInfo.attacker,
-                                        projectilePrefab = gameObject,
-                                        rotation = quaternion2,
-                                        speedOverride = num34,
-                                        target = null
-                                    });
-                                }
-                            }
-                            else if (self.body.HasBuff(DLC1Content.Buffs.ElementalRingVoidReady))
-                            {
-                                int itemCount11 = inventory.GetItemCount(DLC1Content.Items.ElementalRingVoid);
-                                self.body.RemoveBuff(DLC1Content.Buffs.ElementalRingVoidReady);
-                                int num35 = 1;
-                                while ((float)num35 <= 20f)
-                                {
-                                    self.body.AddTimedBuff(DLC1Content.Buffs.ElementalRingVoidCooldown, (float)num35);
-                                    num35++;
-                                }
-                                ProcChainMask procChainMask6 = damageInfo.procChainMask;
-                                procChainMask6.AddProc(ProcType.Rings);
-                                if (itemCount11 > 0)
-                                {
-                                    GameObject gameObject2 = LegacyResourcesAPI.Load<GameObject>("Prefabs/Projectiles/ElementalRingVoidBlackHole");
-                                    float num36 = 1f * (float)itemCount11;
-                                    float num37 = Util.OnHitProcDamage(damageInfo.damage, attackerBody.damage, num36);
-                                    ProjectileManager.instance.FireProjectile(new FireProjectileInfo
-                                    {
-                                        damage = num37,
-                                        crit = damageInfo.crit,
-                                        damageColorIndex = DamageColorIndex.Void,
-                                        position = damageInfo.position,
-                                        procChainMask = procChainMask6,
-                                        force = 6000f,
-                                        owner = damageInfo.attacker,
-                                        projectilePrefab = gameObject2,
-                                        rotation = Quaternion.identity,
-                                        target = null
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         private void RemoveBandsOnHit(ILContext il)
@@ -648,6 +555,128 @@ namespace ArtifactOfConsole.Artifact
                 var lunarGolem = Addressables.LoadAssetAsync<CharacterSpawnCard>("RoR2/Base/LunarGolem/cscLunarGolem.asset").WaitForCompletion();
                 lunarGolem.eliteRules = SpawnCard.EliteRules.Default;
                 // everything but perfected, more wisp spawns like console
+            }
+        }
+    }
+
+    public class StupidBandController : MonoBehaviour, IOnTakeDamageServerReceiver
+    {
+        public void OnTakeDamageServer(DamageReport damageReport)
+        {
+            var damageInfo = damageReport.damageInfo;
+            var attacker = damageInfo.attacker;
+            if (attacker)
+            {
+                var attackerBody = attacker.GetComponent<CharacterBody>();
+                if (attackerBody)
+                {
+                    var inventory = attackerBody.inventory;
+
+                    if (!damageInfo.procChainMask.HasProc(ProcType.Rings) && damageReport.damageDealt / attackerBody.damage >= 4f)
+                    {
+                        var aimOrigin = attackerBody.aimOrigin;
+
+                        if (attackerBody.HasBuff(RoR2Content.Buffs.ElementalRingsReady) && inventory)
+                        {
+                            int itemCount9 = inventory.GetItemCount(RoR2Content.Items.IceRing);
+                            int itemCount10 = inventory.GetItemCount(RoR2Content.Items.FireRing);
+                            attackerBody.RemoveBuff(RoR2Content.Buffs.ElementalRingsReady);
+                            int num29 = 1;
+                            while (num29 <= 10f)
+                            {
+                                attackerBody.AddTimedBuff(RoR2Content.Buffs.ElementalRingsCooldown, (float)num29);
+                                num29++;
+                            }
+                            ProcChainMask procChainMask5 = damageInfo.procChainMask;
+                            procChainMask5.AddProc(ProcType.Rings);
+                            Vector3 position2 = damageInfo.position;
+                            if (itemCount9 > 0 && attackerBody)
+                            {
+                                float num30 = 2.5f * itemCount9;
+                                float num31 = Util.OnHitProcDamage(damageInfo.damage, attackerBody.damage, num30);
+                                DamageInfo damageInfo2 = new()
+                                {
+                                    damage = num31,
+                                    damageColorIndex = DamageColorIndex.Item,
+                                    damageType = DamageType.Generic,
+                                    attacker = damageInfo.attacker,
+                                    crit = damageInfo.crit,
+                                    force = Vector3.zero,
+                                    inflictor = null,
+                                    position = position2,
+                                    procChainMask = procChainMask5,
+                                    procCoefficient = 1f
+                                };
+                                EffectManager.SimpleImpactEffect(LegacyResourcesAPI.Load<GameObject>("Prefabs/Effects/ImpactEffects/IceRingExplosion"), position2, Vector3.up, true);
+                                attackerBody.AddTimedBuff(RoR2Content.Buffs.Slow80, 3f * (float)itemCount9);
+                                damageReport.victim.TakeDamage(damageInfo2);
+                            }
+                            if (itemCount10 > 0)
+                            {
+                                GameObject gameObject = LegacyResourcesAPI.Load<GameObject>("Prefabs/Projectiles/FireTornado");
+                                float resetInterval = gameObject.GetComponent<ProjectileOverlapAttack>().resetInterval;
+                                float lifetime = gameObject.GetComponent<ProjectileSimple>().lifetime;
+                                float num32 = 3f * (float)itemCount10;
+                                float num33 = Util.OnHitProcDamage(damageInfo.damage, attackerBody.damage, num32) / lifetime * resetInterval;
+                                float num34 = 0f;
+                                Quaternion quaternion2 = Quaternion.identity;
+                                Vector3 vector2 = position2 - aimOrigin;
+                                vector2.y = 0f;
+                                if (vector2 != Vector3.zero)
+                                {
+                                    num34 = -1f;
+                                    quaternion2 = Util.QuaternionSafeLookRotation(vector2, Vector3.up);
+                                }
+                                ProjectileManager.instance.FireProjectile(new FireProjectileInfo
+                                {
+                                    damage = num33,
+                                    crit = damageInfo.crit,
+                                    damageColorIndex = DamageColorIndex.Item,
+                                    position = position2,
+                                    procChainMask = procChainMask5,
+                                    force = 0f,
+                                    owner = damageInfo.attacker,
+                                    projectilePrefab = gameObject,
+                                    rotation = quaternion2,
+                                    speedOverride = num34,
+                                    target = null
+                                });
+                            }
+                        }
+                        else if (attackerBody.HasBuff(DLC1Content.Buffs.ElementalRingVoidReady))
+                        {
+                            int itemCount11 = inventory.GetItemCount(DLC1Content.Items.ElementalRingVoid);
+                            attackerBody.RemoveBuff(DLC1Content.Buffs.ElementalRingVoidReady);
+                            int num35 = 1;
+                            while ((float)num35 <= 20f)
+                            {
+                                attackerBody.AddTimedBuff(DLC1Content.Buffs.ElementalRingVoidCooldown, (float)num35);
+                                num35++;
+                            }
+                            ProcChainMask procChainMask6 = damageInfo.procChainMask;
+                            procChainMask6.AddProc(ProcType.Rings);
+                            if (itemCount11 > 0)
+                            {
+                                GameObject gameObject2 = LegacyResourcesAPI.Load<GameObject>("Prefabs/Projectiles/ElementalRingVoidBlackHole");
+                                float num36 = 1f * (float)itemCount11;
+                                float num37 = Util.OnHitProcDamage(damageInfo.damage, attackerBody.damage, num36);
+                                ProjectileManager.instance.FireProjectile(new FireProjectileInfo
+                                {
+                                    damage = num37,
+                                    crit = damageInfo.crit,
+                                    damageColorIndex = DamageColorIndex.Void,
+                                    position = damageInfo.position,
+                                    procChainMask = procChainMask6,
+                                    force = 6000f,
+                                    owner = damageInfo.attacker,
+                                    projectilePrefab = gameObject2,
+                                    rotation = Quaternion.identity,
+                                    target = null
+                                });
+                            }
+                        }
+                    }
+                }
             }
         }
     }
