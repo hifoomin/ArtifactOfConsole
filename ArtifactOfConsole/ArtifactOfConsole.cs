@@ -11,60 +11,317 @@ using EntityStates.Croco;
 using RoR2.CharacterAI;
 using UnityEngine.Networking;
 using RoR2.Projectile;
-using System.Collections;
+using Mono.Cecil.Cil;
+using R2API;
+using R2API.Utils;
+using RoR2.ConVar;
 
 namespace ArtifactOfConsole.Artifact
 {
     internal class ArtifactOfConsole : ArtifactBase<ArtifactOfConsole>
     {
-        public Texture2D tempEnabled = Addressables.LoadAssetAsync<Texture2D>("RoR2/Base/LunarGolem/texBuffLunarShellIcon.tif").WaitForCompletion();
-        public Texture2D tempDisabled = Addressables.LoadAssetAsync<Texture2D>("RoR2/Base/Nullifier/texBuffNullifiedIcon.tif").WaitForCompletion();
         public override string ArtifactName => "Artifact of Console";
 
         public override string ArtifactLangTokenName => "HIFU_ArtifactOfConsole";
 
         public override string ArtifactDescription => "Experience a bunch of Risk of Rain 2 Console Edition bugs.";
 
-        public override Sprite ArtifactEnabledIcon => Sprite.Create(tempEnabled, new Rect(0f, 0f, (float)tempEnabled.width, (float)tempEnabled.height), new Vector2(0f, 0f));
+        public override Sprite ArtifactEnabledIcon => Main.artifactofconsole.LoadAsset<Sprite>("texArtifactOfConsoleOn");
 
-        public override Sprite ArtifactDisabledIcon => Sprite.Create(tempDisabled, new Rect(0f, 0f, (float)tempDisabled.width, (float)tempDisabled.height), new Vector2(0f, 0f));
+        public override Sprite ArtifactDisabledIcon => Main.artifactofconsole.LoadAsset<Sprite>("texArtifactOfConsoleOff");
 
         public override void Init(ConfigFile config)
         {
+            var shield = Addressables.LoadAssetAsync<Texture2D>("RoR2/Base/Common/texBuffGenericShield.tif").WaitForCompletion();
+
+            oldCleansingPoolDropTable = ScriptableObject.CreateInstance<OldCleansingPoolDropTable>();
+            oldPowerMode = ScriptableObject.CreateInstance<BuffDef>();
+            oldPowerMode.isDebuff = false;
+            oldPowerMode.isHidden = false;
+            oldPowerMode.canStack = false;
+            oldPowerMode.buffColor = new Color32(214, 201, 58, 255);
+            oldPowerMode.iconSprite = Sprite.Create(shield, new Rect(0f, 0f, (float)shield.width, (float)shield.height), new Vector2(0f, 0f));
             CreateLang();
             CreateArtifact();
             Hooks();
         }
 
+        public static OldCleansingPoolDropTable oldCleansingPoolDropTable;
+        public static BuffDef oldPowerMode;
+
         public override void Hooks()
         {
-            On.RoR2.DamageInfo.ModifyDamageInfo += RandomNoDamageOnHit;
+            CharacterBody.onBodyStartGlobal += RemoveOSP;
+            CharacterMaster.onStartGlobal += ClingyDronesAndInvincibleUmbrae;
+            IL.EntityStates.Croco.Bite.OnMeleeHitAuthority += RemoveM2Healing;
+            IL.EntityStates.Croco.Slash.OnMeleeHitAuthority += RemoveM1Healing;
+            IL.RoR2.CharacterBody.RecalculateStats += ChangeTriTipChance;
+            IL.RoR2.CharacterBody.UpdateFireTrail += IncreaseFireTrailDamage;
+            IL.RoR2.GlobalEventManager.OnHitEnemy += RemoveBandsOnHitChangeDeathMarkDebuffsRequirement;
             IL.RoR2.HealthComponent.Heal += RemoveAegisAndRejuvRack;
-            Stage.onServerStageBegin += RandomStageStuff;
-            // RoR2Application.onFixedUpdate += RandomCrashRandomUpdateRate;
+            IL.RoR2.HealthComponent.TakeDamage += NoFocusCrystalColorNerfedCrowbarNoPlanula;
+            On.EntityStates.Croco.BaseLeap.OnEnter += HighSpeedLeap;
+            On.RoR2.DamageDisplay.DoUpdate += RemoveDamageNumbersLateGame;
+            On.RoR2.DamageInfo.ModifyDamageInfo += RandomNoDamageOnHit;
+            On.RoR2.GlobalEventManager.OnHitAll += OverloadingTwoOrbs;
+            On.RoR2.HealthComponent.Awake += HealthComponent_Awake;
             On.RoR2.HealthComponent.TakeDamageForce_DamageInfo_bool_bool += IncreasedKnockback;
             On.RoR2.HealthComponent.TakeDamageForce_Vector3_bool_bool += IncreasedKnockback2;
-            IL.RoR2.CharacterBody.UpdateFireTrail += IncreaseFireTrailDamage;
-            IL.EntityStates.Croco.Slash.OnMeleeHitAuthority += RemoveM1Healing;
-            IL.EntityStates.Croco.Bite.OnMeleeHitAuthority += RemoveM2Healing;
-            On.EntityStates.Croco.BaseLeap.OnEnter += HighSpeedLeap;
-            CharacterBody.onBodyStartGlobal += RemoveOSP;
-            On.RoR2.DamageDisplay.DoUpdate += RemoveDamageNumbersLateGame;
-            SceneDirector.onPrePopulateMonstersSceneServer += CommencementLunarWispSpam;
-            On.RoR2.CharacterBody.FixedUpdate += RandomFpsDrops;
-            CharacterMaster.onStartGlobal += ClingyDrones;
-            On.RoR2.GlobalEventManager.OnHitAll += OverloadingTwoOrbs;
-            IL.RoR2.GlobalEventManager.OnHitEnemy += RemoveBandsOnHit;
-            On.RoR2.HealthComponent.TakeDamage += AddBands;
-            On.RoR2.HealthComponent.Awake += HealthComponent_Awake;
+            On.RoR2.Items.NearbyDamageBonusBodyBehavior.OnEnable += NoFocusCrystalVFX;
+            On.RoR2.Run.IsExpansionEnabled += DisableSOTV;
             On.RoR2.UI.HUD.Awake += HUD_Awake;
+            RoR2Application.onFixedUpdate += RandomCrashFpsDropsFPSLimit;
+            SceneDirector.onPrePopulateMonstersSceneServer += CommencementLunarWispSpam;
+            Stage.onServerStageBegin += RandomStageStuff;
+            On.RoR2.CombatDirector.Spawn += LunarChimeraeBugs;
+            On.RoR2.GlobalEventManager.OnInteractionBegin += GlobalEventManager_OnInteractionBegin;
+            IL.RoR2.CharacterBody.AddMultiKill += CharacterBody_AddMultiKill;
+            On.RoR2.Projectile.ProjectileImpactExplosion.OnProjectileImpact += ProjectileImpactExplosion_OnProjectileImpact;
+            RecalculateStatsAPI.GetStatCoefficients += RecalculateStatsAPI_GetStatCoefficients;
+            On.EntityStates.Toolbot.ToolbotDualWieldBase.OnEnter += ToolbotDualWieldBase_OnEnter;
+            On.EntityStates.Loader.PreGroundSlam.OnEnter += PreGroundSlam_OnEnter;
+            On.EntityStates.Loader.GroundSlam.OnEnter += GroundSlam_OnEnter;
+            On.RoR2.RagdollController.BeginRagdoll += RagdollController_BeginRagdoll;
+            On.RoR2.HoldoutZoneController.Start += HoldoutZoneController_Start;
+            Run.onRunStartGlobal += Run_onRunStartGlobal;
+            On.EntityStates.GravekeeperBoss.SpawnState.OnEnter += SpawnState_OnEnter;
             Changes();
+        }
+
+        private void SpawnState_OnEnter(On.EntityStates.GravekeeperBoss.SpawnState.orig_OnEnter orig, EntityStates.GravekeeperBoss.SpawnState self)
+        {
+            EntityStates.GravekeeperBoss.SpawnState.duration = 10f;
+            orig(self);
+        }
+
+        private void Run_onRunStartGlobal(Run obj)
+        {
+            if (ArtifactEnabled)
+            {
+                RoR2.Networking.NetworkManagerSystem.cvNetTimeSmoothRate = new FloatConVar("net_time_smooth_rate", ConVarFlags.None, "0", "The smoothing rate for the network time.");
+                // vanilla is 1.05;
+                RoR2.Networking.NetworkManagerSystem.svTimeTransmitInterval = new FloatConVar("sv_time_transmit_interval", ConVarFlags.Cheat, (10f / 60f).ToString(), "How long it takes for the server to issue a time update to clients.");
+                // vanilla is 1/60;
+            }
+            else
+            {
+                RoR2.Networking.NetworkManagerSystem.cvNetTimeSmoothRate = new FloatConVar("net_time_smooth_rate", ConVarFlags.None, "1.05", "The smoothing rate for the network time.");
+                // vanilla is 1.05;
+                RoR2.Networking.NetworkManagerSystem.svTimeTransmitInterval = new FloatConVar("sv_time_transmit_interval", ConVarFlags.Cheat, 0.016666668f.ToString(), "How long it takes for the server to issue a time update to clients.");
+                // vanilla is 1/60;
+            }
+        }
+
+        private void HoldoutZoneController_Start(On.RoR2.HoldoutZoneController.orig_Start orig, HoldoutZoneController self)
+        {
+            if (ArtifactEnabled && self.transform.root.name == "Moon2DropshipZone")
+            {
+                self.holdoutZoneShape = HoldoutZoneController.HoldoutZoneShape.Sphere;
+            }
+            orig(self);
+        }
+
+        private void RagdollController_BeginRagdoll(On.RoR2.RagdollController.orig_BeginRagdoll orig, RagdollController self, Vector3 force)
+        {
+            if (ArtifactEnabled)
+            {
+                force *= 5f;
+            }
+            orig(self, force);
+        }
+
+        private void GroundSlam_OnEnter(On.EntityStates.Loader.GroundSlam.orig_OnEnter orig, EntityStates.Loader.GroundSlam self)
+        {
+            if (ArtifactEnabled)
+            {
+                for (int i = 0; i < 50; i++)
+                    Util.PlaySound("Play_loader_R_variant_whooshDown", self.gameObject);
+            }
+            orig(self);
+        }
+
+        private void PreGroundSlam_OnEnter(On.EntityStates.Loader.PreGroundSlam.orig_OnEnter orig, EntityStates.Loader.PreGroundSlam self)
+        {
+            if (ArtifactEnabled)
+            {
+                for (int i = 0; i < 50; i++)
+                    Util.PlaySound("Play_loader_R_variant_activate", self.gameObject);
+            }
+            orig(self);
+        }
+
+        private void ToolbotDualWieldBase_OnEnter(On.EntityStates.Toolbot.ToolbotDualWieldBase.orig_OnEnter orig, EntityStates.Toolbot.ToolbotDualWieldBase self)
+        {
+            if (ArtifactEnabled)
+            {
+                EntityStates.Toolbot.ToolbotDualWieldBase.bonusBuff = oldPowerMode;
+            }
+            orig(self);
+        }
+
+        private void RecalculateStatsAPI_GetStatCoefficients(CharacterBody sender, RecalculateStatsAPI.StatHookEventArgs args)
+        {
+            if (sender.HasBuff(oldPowerMode))
+            {
+                args.armorAdd += 200f;
+            }
+        }
+
+        private void ProjectileImpactExplosion_OnProjectileImpact(On.RoR2.Projectile.ProjectileImpactExplosion.orig_OnProjectileImpact orig, ProjectileImpactExplosion self, ProjectileImpactInfo impactInfo)
+        {
+            if (ArtifactEnabled && self.gameObject.name.Contains("ImpVoidspikeProjectile"))
+            {
+                self.destroyOnEnemy = false;
+                self.blastRadius = 0f;
+                self.blastDamageCoefficient = 0f;
+                self.blastProcCoefficient = 0f;
+                self.projectileDamage.damageType = DamageType.Generic;
+            }
+            orig(self, impactInfo);
+        }
+
+        private void CharacterBody_AddMultiKill(ILContext il)
+        {
+            ILCursor c = new(il);
+
+            if (c.TryGotoNext(MoveType.Before,
+                    x => x.MatchCallOrCallvirt(typeof(CharacterBody).GetPropertyGetter(nameof(CharacterBody.multiKillCount))),
+                    x => x.MatchLdcI4(4)))
+            {
+                c.Index += 2;
+                c.EmitDelegate<Func<int, int>>((self) =>
+                {
+                    return ArtifactEnabled ? 2 : self;
+                });
+            }
+            else
+            {
+                Main.ACLogger.LogError("Failed to apply Berzerker's Pauldron Buff Kill Requirement hook");
+            }
+        }
+
+        private void GlobalEventManager_OnInteractionBegin(On.RoR2.GlobalEventManager.orig_OnInteractionBegin orig, GlobalEventManager self, Interactor interactor, IInteractable interactable, GameObject interactableObject)
+        {
+            if (ArtifactEnabled && interactableObject.name.Contains("ShrineCleanse"))
+            {
+                var shopTerminalBehavior = interactableObject.GetComponent<ShopTerminalBehavior>();
+                shopTerminalBehavior.dropTable = oldCleansingPoolDropTable;
+            }
+            orig(self, interactor, interactable, interactableObject);
+        }
+
+        private bool LunarChimeraeBugs(On.RoR2.CombatDirector.orig_Spawn orig, CombatDirector self, SpawnCard spawnCard, EliteDef eliteDef, Transform spawnTarget, DirectorCore.MonsterSpawnDistance spawnDistance, bool preventOverhead, float valueMultiplier, DirectorPlacementRule.PlacementMode placementMode)
+        {
+            if (ArtifactEnabled && spawnCard.eliteRules == SpawnCard.EliteRules.Lunar)
+            {
+                spawnCard.eliteRules = SpawnCard.EliteRules.Default;
+                spawnCard.directorCreditCost /= 2;
+                self.eliteBias *= 5000;
+                self.maxSpawnDistance *= 0.1f;
+            }
+            return orig(self, spawnCard, eliteDef, spawnTarget, spawnDistance, preventOverhead, valueMultiplier, placementMode);
+        }
+
+        private void ChangeTriTipChance(ILContext il)
+        {
+            ILCursor c = new(il);
+
+            if (c.TryGotoNext(MoveType.Before,
+                    x => x.MatchLdarg(0),
+                    x => x.MatchLdcR4(10f),
+                    x => x.MatchLdloc(out _),
+                    x => x.MatchConvR4()))
+            {
+                c.Index += 2;
+                c.EmitDelegate<Func<float, float>>((self) =>
+                {
+                    return ArtifactEnabled ? 9f : self;
+                });
+            }
+            else
+            {
+                Main.ACLogger.LogError("Failed to apply Tri-tip Dagger Chance hook");
+            }
+        }
+
+        private bool DisableSOTV(On.RoR2.Run.orig_IsExpansionEnabled orig, Run self, RoR2.ExpansionManagement.ExpansionDef expansionDef)
+        {
+            if (ArtifactEnabled && expansionDef.nameToken == "DLC1_NAME")
+            {
+                return false;
+            }
+            return orig(self, expansionDef);
+        }
+
+        private void NoFocusCrystalColorNerfedCrowbarNoPlanula(ILContext il)
+        {
+            ILCursor c = new(il);
+
+            if (c.TryGotoNext(MoveType.Before,
+                x => x.MatchLdcI4(10),
+                x => x.MatchStfld(typeof(DamageInfo), nameof(DamageInfo.damageColorIndex))))
+            {
+                c.Index += 1;
+                c.EmitDelegate<Func<int, int>>((self) =>
+                {
+                    return ArtifactEnabled ? 0 : self;
+                });
+            }
+            else
+            {
+                Main.ACLogger.LogError("Failed to apply Focus Crystal Damage Color hook");
+            }
+
+            c.Index = 0;
+
+            if (c.TryGotoNext(MoveType.Before,
+                x => x.MatchLdcR4(1f),
+                x => x.MatchLdcR4(0.75f)))
+            {
+                c.Index += 2;
+                c.EmitDelegate<Func<float, float>>((self) =>
+                {
+                    return ArtifactEnabled ? 0.5f : self;
+                });
+            }
+            else
+            {
+                Main.ACLogger.LogError("Failed to apply Crowbar Damage hook");
+            }
+
+            c.Index = 0;
+
+            if (c.TryGotoNext(MoveType.Before,
+                x => x.MatchLdcR4(15f),
+                x => x.MatchMul()))
+            {
+                c.Index += 1;
+                c.EmitDelegate<Func<float, float>>((self) =>
+                {
+                    return ArtifactEnabled ? 0f : self;
+                });
+            }
+            else
+            {
+                Main.ACLogger.LogError("Failed to apply Crowbar Damage hook");
+            }
+        }
+
+        private void NoFocusCrystalVFX(On.RoR2.Items.NearbyDamageBonusBodyBehavior.orig_OnEnable orig, RoR2.Items.NearbyDamageBonusBodyBehavior self)
+        {
+            if (ArtifactEnabled)
+            {
+                self.indicatorEnabled = false;
+            }
+
+            orig(self);
         }
 
         private void HUD_Awake(On.RoR2.UI.HUD.orig_Awake orig, RoR2.UI.HUD self)
         {
             if (ArtifactEnabled)
             {
+                /*
                 var mainUIArea = self.mainUIPanel.transform;
                 var springCanvas = mainUIArea.GetChild(0);
 
@@ -79,6 +336,7 @@ namespace ArtifactOfConsole.Artifact
 
                 var text = healthBar.GetChild(1);
                 text.transform.localScale = new Vector3(1.5f, 1.5f, 1.5f);
+                */
             }
             orig(self);
         }
@@ -89,12 +347,7 @@ namespace ArtifactOfConsole.Artifact
             orig(self);
         }
 
-        private void AddBands(On.RoR2.HealthComponent.orig_TakeDamage orig, HealthComponent self, DamageInfo damageInfo)
-        {
-            orig(self, damageInfo);
-        }
-
-        private void RemoveBandsOnHit(ILContext il)
+        private void RemoveBandsOnHitChangeDeathMarkDebuffsRequirement(ILContext il)
         {
             ILCursor c = new(il);
 
@@ -111,6 +364,24 @@ namespace ArtifactOfConsole.Artifact
             else
             {
                 Main.ACLogger.LogError("Failed to apply Bands Damage Bug hook");
+            }
+
+            c.Index = 0;
+
+            if (c.TryGotoNext(MoveType.Before,
+                    x => x.MatchLdloc(16),
+                    x => x.MatchLdcI4(4),
+                    x => x.MatchBlt(out ILLabel IL_1180)))
+            {
+                c.Index += 2;
+                c.EmitDelegate<Func<int, int>>((self) =>
+                {
+                    return ArtifactEnabled ? 5 : self;
+                });
+            }
+            else
+            {
+                Main.ACLogger.LogError("Failed to apply Death Mark Minimum Debuffs hook");
             }
         }
 
@@ -147,7 +418,7 @@ namespace ArtifactOfConsole.Artifact
             orig(self, damageInfo, hitObject);
         }
 
-        private void ClingyDrones(CharacterMaster master)
+        private void ClingyDronesAndInvincibleUmbrae(CharacterMaster master)
         {
             if (ArtifactEnabled)
             {
@@ -271,6 +542,16 @@ namespace ArtifactOfConsole.Artifact
                         hardLeash8.minDistance = 0f;
                         break;
                 }
+                var body = master.GetBody();
+                if (body)
+                {
+                    bool isUmbra = master.teamIndex == TeamIndex.Monster && body.name.Contains("MonsterMaster");
+                    if (isUmbra)
+                    {
+                        body.healthComponent.godMode = true;
+                    }
+                }
+                // invincible umbrae
             }
         }
 
@@ -287,28 +568,8 @@ namespace ArtifactOfConsole.Artifact
         {
             if (ArtifactEnabled)
             {
-                BaseLeap.upwardVelocity = 14f;
-                BaseLeap.forwardVelocity = 6f;
-            }
-            else
-            {
-                orig(self);
-            }
-        }
-
-        private void RandomFpsDrops(On.RoR2.CharacterBody.orig_FixedUpdate orig, CharacterBody self)
-        {
-            if (ArtifactEnabled)
-            {
-                Application.targetFrameRate = 60;
-                if (Run.instance.stageRng.RangeInt(0, 1000) < 3)
-                {
-                    Application.targetFrameRate = 10;
-                }
-            }
-            else
-            {
-                Application.targetFrameRate = int.MaxValue;
+                BaseLeap.upwardVelocity = 21f;
+                BaseLeap.forwardVelocity = 9f;
             }
             orig(self);
         }
@@ -317,8 +578,9 @@ namespace ArtifactOfConsole.Artifact
         {
             if (ArtifactEnabled && SceneManager.GetActiveScene().name == "moon2")
             {
-                sceneDirector.monsterCredit *= 7;
+                sceneDirector.monsterCredit *= 50;
                 sceneDirector.spawnDistanceMultiplier *= 0.1f;
+                sceneDirector.eliteBias *= 100f;
             }
         }
 
@@ -399,7 +661,7 @@ namespace ArtifactOfConsole.Artifact
             orig(self, force, alwaysApply, disableAirControlUntilCollision);
         }
 
-        private void RandomCrashRandomUpdateRate()
+        private void RandomCrashFpsDropsFPSLimit()
         {
             if (ArtifactEnabled)
             {
@@ -408,13 +670,15 @@ namespace ArtifactOfConsole.Artifact
                     UnityEngine.Diagnostics.Utils.ForceCrash(UnityEngine.Diagnostics.ForcedCrashCategory.AccessViolation);
                     // random crash at any time
                 }
-
-                Time.fixedDeltaTime = 1 / Run.instance.spawnRng.RangeFloat(30, 70);
-                // lower non-input, non-render fps to random lmaoo
+                Application.targetFrameRate = 60;
+                if (Run.instance.stageRng.RangeInt(0, 1000) < 3)
+                {
+                    Application.targetFrameRate = 10;
+                }
             }
-            if (Time.fixedDeltaTime != 1 / 60 && ArtifactEnabled == false)
+            else
             {
-                Time.fixedDeltaTime = 1 / 60;
+                Application.targetFrameRate = int.MaxValue;
             }
         }
 
@@ -543,18 +807,6 @@ namespace ArtifactOfConsole.Artifact
                     }
                 }
                 // smaller hitbox
-
-                var lunarWisp = Addressables.LoadAssetAsync<CharacterSpawnCard>("RoR2/Base/LunarWisp/cscLunarWisp.asset").WaitForCompletion();
-                lunarWisp.eliteRules = SpawnCard.EliteRules.Default;
-                lunarWisp.directorCreditCost = 80;
-
-                var lunarExploder = Addressables.LoadAssetAsync<CharacterSpawnCard>("RoR2/Base/LunarExploder/cscLunarExploder.asset").WaitForCompletion();
-                lunarExploder.eliteRules = SpawnCard.EliteRules.Default;
-                lunarExploder.directorCreditCost = 200;
-
-                var lunarGolem = Addressables.LoadAssetAsync<CharacterSpawnCard>("RoR2/Base/LunarGolem/cscLunarGolem.asset").WaitForCompletion();
-                lunarGolem.eliteRules = SpawnCard.EliteRules.Default;
-                // everything but perfected, more wisp spawns like console
             }
         }
     }
@@ -678,6 +930,36 @@ namespace ArtifactOfConsole.Artifact
                     }
                 }
             }
+        }
+    }
+
+    public class OldCleansingPoolDropTable : PickupDropTable
+    {
+        public WeightedSelection<PickupIndex> weighted = new();
+
+        public override int GetPickupCount()
+        {
+            return weighted.Count;
+        }
+
+        public void GenerateWeightedSelection()
+        {
+            weighted.Clear();
+            weighted.AddChoice(PickupCatalog.FindPickupIndex(RoR2Content.Items.Pearl.itemIndex), 96f);
+            weighted.AddChoice(PickupCatalog.FindPickupIndex(RoR2Content.Items.ShinyPearl.itemIndex), 4f);
+        }
+
+        public override PickupIndex[] GenerateUniqueDropsPreReplacement(int maxDrops, Xoroshiro128Plus rng)
+        {
+            GenerateWeightedSelection();
+            return GenerateUniqueDropsFromWeightedSelection(maxDrops, rng, weighted);
+        }
+
+        public override PickupIndex GenerateDropPreReplacement(Xoroshiro128Plus rng)
+        {
+            GenerateWeightedSelection();
+            Debug.Log(GenerateDropFromWeightedSelection(rng, weighted));
+            return GenerateDropFromWeightedSelection(rng, weighted);
         }
     }
 }

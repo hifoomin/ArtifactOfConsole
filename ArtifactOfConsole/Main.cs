@@ -29,7 +29,7 @@ namespace ArtifactOfConsole
         public void Awake()
         {
             ACLogger = base.Logger;
-            // artifactofconsole = AssetBundle.LoadFromFile(Assembly.GetExecutingAssembly().Location.Replace("ArtifactOfBlindness.dll", "artifactofblindness"));
+            artifactofconsole = AssetBundle.LoadFromFile(Assembly.GetExecutingAssembly().Location.Replace("ArtifactOfConsole.dll", "artifactofconsole"));
 
             var ArtifactTypes = Assembly.GetExecutingAssembly().GetTypes().Where(type => !type.IsAbstract && type.IsSubclassOf(typeof(ArtifactBase)));
 
