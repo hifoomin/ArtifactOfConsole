@@ -15,6 +15,8 @@ using Mono.Cecil.Cil;
 using R2API;
 using R2API.Utils;
 using RoR2.ConVar;
+using KinematicCharacterController;
+using System.Collections;
 
 namespace ArtifactOfConsole.Artifact
 {
@@ -51,10 +53,11 @@ namespace ArtifactOfConsole.Artifact
 
         public override void Hooks()
         {
-            CharacterBody.onBodyStartGlobal += RemoveOSP;
+            CharacterBody.onBodyStartGlobal += RemoveOSPMakeBrassCancer;
             CharacterMaster.onStartGlobal += ClingyDronesAndInvincibleUmbrae;
             IL.EntityStates.Croco.Bite.OnMeleeHitAuthority += RemoveM2Healing;
             IL.EntityStates.Croco.Slash.OnMeleeHitAuthority += RemoveM1Healing;
+            IL.EntityStates.Toolbot.ToolbotDashImpact.OnEnter += ToolbotDashImpact_OnEnter;
             IL.RoR2.CharacterBody.RecalculateStats += ChangeTriTipChance;
             IL.RoR2.CharacterBody.UpdateFireTrail += IncreaseFireTrailDamage;
             IL.RoR2.GlobalEventManager.OnHitEnemy += RemoveBandsOnHitChangeDeathMarkDebuffsRequirement;
@@ -85,12 +88,103 @@ namespace ArtifactOfConsole.Artifact
             On.RoR2.HoldoutZoneController.Start += HoldoutZoneController_Start;
             Run.onRunStartGlobal += Run_onRunStartGlobal;
             On.EntityStates.GravekeeperBoss.SpawnState.OnEnter += SpawnState_OnEnter;
-            Changes();
+            On.RoR2.UI.HUDBossHealthBarController.LateUpdate += HUDBossHealthBarController_LateUpdate;
+            On.RoR2.UI.HUDBossHealthBarController.OnDisable += HUDBossHealthBarController_OnDisable;
+            On.RoR2.TeleporterInteraction.BaseTeleporterState.OnEnter += BaseTeleporterState_OnEnter;
+            On.RoR2.CombatDirector.Awake += MoreCredits;
+        }
+
+        private void HUDBossHealthBarController_OnDisable(On.RoR2.UI.HUDBossHealthBarController.orig_OnDisable orig, RoR2.UI.HUDBossHealthBarController self)
+        {
+            orig(self);
+            textTimer = 0f;
+        }
+
+        public static float textTimer = 0f;
+        public static float textInterval = 0.6f;
+
+        private void HUDBossHealthBarController_LateUpdate(On.RoR2.UI.HUDBossHealthBarController.orig_LateUpdate orig, RoR2.UI.HUDBossHealthBarController self)
+        {
+            if (ArtifactEnabled)
+            {
+                bool flag = self.currentBossGroup && self.currentBossGroup.combatSquad.memberCount > 0;
+                self.container.SetActive(flag);
+                if (flag)
+                {
+                    textTimer += Time.fixedDeltaTime;
+
+                    float totalObservedHealth = self.currentBossGroup.totalObservedHealth;
+                    float totalMaxObservedMaxHealth = self.currentBossGroup.totalMaxObservedMaxHealth;
+                    float num = ((totalMaxObservedMaxHealth == 0f) ? 0f : Mathf.Clamp01(totalObservedHealth / totalMaxObservedMaxHealth));
+                    self.delayedTotalHealthFraction = Mathf.Clamp(Mathf.SmoothDamp(self.delayedTotalHealthFraction, num, ref self.healthFractionVelocity, 0.1f, float.PositiveInfinity, Time.deltaTime), num, 1f);
+                    self.fillRectImage.fillAmount = num;
+                    self.delayRectImage.fillAmount = self.delayedTotalHealthFraction;
+                    RoR2.UI.HUDBossHealthBarController.sharedStringBuilder.Clear().AppendInt(Mathf.CeilToInt(totalObservedHealth), 1U, uint.MaxValue).Append("/")
+                        .AppendInt(Mathf.CeilToInt(totalMaxObservedMaxHealth), 1U, uint.MaxValue);
+                    self.healthLabel.SetText(RoR2.UI.HUDBossHealthBarController.sharedStringBuilder);
+
+                    if (textTimer >= textInterval)
+                    {
+                        Main.ACLogger.LogError("timer ABOVE interval");
+                        self.bossNameLabel.SetText(self.currentBossGroup.bestObservedName, true);
+                        self.bossSubtitleLabel.SetText(self.currentBossGroup.bestObservedSubtitle, true);
+                    }
+                    else
+                    {
+                        Main.ACLogger.LogError("timer below interval");
+                        self.bossNameLabel.SetText("Boss Name", true);
+                        self.bossSubtitleLabel.SetText("Mother of Many", true);
+                    }
+                }
+            }
+            else
+                orig(self);
+        }
+
+        private void MoreCredits(On.RoR2.CombatDirector.orig_Awake orig, CombatDirector self)
+        {
+            orig(self);
+            if (ArtifactEnabled)
+                self.creditMultiplier += 0.33f;
+        }
+
+        private void BaseTeleporterState_OnEnter(On.RoR2.TeleporterInteraction.BaseTeleporterState.orig_OnEnter orig, EntityStates.BaseState self)
+        {
+            orig(self);
+            if (ArtifactEnabled)
+            {
+                var particleScale = 2.5f;
+                var teleporterInteraction = self.GetComponent<TeleporterInteraction>();
+                if (teleporterInteraction && teleporterInteraction.modelChildLocator)
+                {
+                    var particles = teleporterInteraction.transform.Find("TeleporterBaseMesh/BuiltInEffects/PassiveParticle, Sphere");
+                    if (particles)
+                    {
+                        particles.localScale = Vector3.one * 0.8f * particleScale;
+                    }
+                }
+            }
+        }
+
+        private void ToolbotDashImpact_OnEnter(ILContext il)
+        {
+            ILCursor c = new(il);
+
+            if (c.TryGotoNext(MoveType.Before,
+                x => x.MatchLdcI4(32)))
+            {
+                c.Index++;
+                c.EmitDelegate<Func<int, int>>((self) =>
+                {
+                    return ArtifactEnabled ? 0 : self;
+                });
+            }
         }
 
         private void SpawnState_OnEnter(On.EntityStates.GravekeeperBoss.SpawnState.orig_OnEnter orig, EntityStates.GravekeeperBoss.SpawnState self)
         {
-            EntityStates.GravekeeperBoss.SpawnState.duration = 10f;
+            if (ArtifactEnabled)
+                EntityStates.GravekeeperBoss.SpawnState.duration = 10f;
             orig(self);
         }
 
@@ -584,10 +678,42 @@ namespace ArtifactOfConsole.Artifact
             }
         }
 
-        private void RemoveOSP(CharacterBody body)
+        private void RemoveOSPMakeBrassCancer(CharacterBody body)
         {
             if (ArtifactEnabled)
+            {
                 body.oneShotProtectionFraction = 0f;
+
+                var newShieldSize = new Vector3(0.5f, 2.045f, 1.215f);
+                var newBodySize = 0.345f;
+
+                if (body.name == "BellBody(Clone)")
+                {
+                    var mdlBell = body.transform.GetChild(0).GetChild(0);
+                    if (mdlBell)
+                    {
+                        var hurtBoxGroup = mdlBell.GetComponent<HurtBoxGroup>();
+                        for (int i = 0; i < hurtBoxGroup.hurtBoxes.Length; i++)
+                        {
+                            var index = hurtBoxGroup.hurtBoxes[i];
+                            var boxCollider = index.GetComponent<BoxCollider>();
+                            if (boxCollider && boxCollider.size != newShieldSize)
+                            {
+                                boxCollider.size = newShieldSize;
+                            }
+                            var sphereCollider = index.GetComponent<SphereCollider>();
+                            if (sphereCollider && sphereCollider.radius != newBodySize)
+                            {
+                                sphereCollider.radius = newBodySize;
+                            }
+                        }
+                    }
+                }
+                if (body.isPlayerControlled && body.GetComponent<FuckWithCollisions>() == null)
+                {
+                    body.gameObject.AddComponent<FuckWithCollisions>();
+                }
+            }
         }
 
         private void RemoveM2Healing(ILContext il)
@@ -665,7 +791,7 @@ namespace ArtifactOfConsole.Artifact
         {
             if (ArtifactEnabled)
             {
-                if (Random.RandomRangeInt(0, 10000000) < 1)
+                if (Random.RandomRangeInt(0, 10000000) < 2)
                 {
                     UnityEngine.Diagnostics.Utils.ForceCrash(UnityEngine.Diagnostics.ForcedCrashCategory.AccessViolation);
                     // random crash at any time
@@ -686,13 +812,13 @@ namespace ArtifactOfConsole.Artifact
         {
             if (ArtifactEnabled)
             {
-                if (Run.instance.stageRng.RangeInt(0, 100) < 1)
+                if (Run.instance.stageRng.RangeInt(0, 100) < 3)
                 {
                     UnityEngine.Diagnostics.Utils.ForceCrash(UnityEngine.Diagnostics.ForcedCrashCategory.FatalError);
                     // random crash on stage start
                 }
 
-                if (Run.instance.stageRng.RangeInt(0, 100) < 3)
+                if (Run.instance.stageRng.RangeInt(0, 100) < 5)
                 {
                     On.RoR2.DamageInfo.ModifyDamageInfo += RandomNoDamageForStage;
                 }
@@ -701,7 +827,7 @@ namespace ArtifactOfConsole.Artifact
                     On.RoR2.DamageInfo.ModifyDamageInfo -= RandomNoDamageForStage;
                 }
 
-                if (Run.instance.stageRng.RangeInt(0, 100) < 2)
+                if (Run.instance.stageRng.RangeInt(0, 100) < 4)
                 {
                     On.RoR2.DamageInfo.ModifyDamageInfo += RandomNoProcsForStage;
                 }
@@ -710,7 +836,7 @@ namespace ArtifactOfConsole.Artifact
                     On.RoR2.DamageInfo.ModifyDamageInfo -= RandomNoProcsForStage;
                 }
 
-                if (Run.instance.stageRng.RangeInt(0, 100) < 4)
+                if (Run.instance.stageRng.RangeInt(0, 100) < 6)
                 {
                     On.RoR2.DamageInfo.ModifyDamageInfo += RandomInfiniteChainsForStage;
                 }
@@ -738,11 +864,11 @@ namespace ArtifactOfConsole.Artifact
 
         private void RandomNoDamageOnHit(On.RoR2.DamageInfo.orig_ModifyDamageInfo orig, DamageInfo self, HurtBox.DamageModifier damageModifier)
         {
-            if (Run.instance.stageRng.RangeInt(0, 100) < 2)
+            if (Run.instance.stageRng.RangeInt(0, 1000) < 25)
             {
                 self.damage = 0;
             }
-            if (Run.instance.stageRng.RangeInt(0, 100) < 3)
+            if (Run.instance.stageRng.RangeInt(0, 1000) < 45)
             {
                 self.procCoefficient = 0;
             }
@@ -783,30 +909,6 @@ namespace ArtifactOfConsole.Artifact
             else
             {
                 Main.ACLogger.LogError("Failed to apply Aegis Overheal hook");
-            }
-        }
-
-        private void Changes()
-        {
-            if (ArtifactEnabled)
-            {
-                var brassContraption = Addressables.LoadAssetAsync<GameObject>("RoR2/Base/Bell/BellBody.png").WaitForCompletion();
-                var mdlBell = brassContraption.transform.GetChild(0).GetChild(0);
-                var hurtBoxGroup = mdlBell.GetComponent<HurtBoxGroup>();
-                for (int i = 0; i < hurtBoxGroup.hurtBoxes.Length; i++)
-                {
-                    var boxCollider = hurtBoxGroup.hurtBoxes[i].GetComponent<BoxCollider>();
-                    if (boxCollider)
-                    {
-                        boxCollider.size *= 0.6f;
-                    }
-                    var sphereCollider = hurtBoxGroup.hurtBoxes[i].GetComponent<SphereCollider>();
-                    if (sphereCollider)
-                    {
-                        sphereCollider.radius *= 0.6f;
-                    }
-                }
-                // smaller hitbox
             }
         }
     }
@@ -960,6 +1062,42 @@ namespace ArtifactOfConsole.Artifact
             GenerateWeightedSelection();
             Debug.Log(GenerateDropFromWeightedSelection(rng, weighted));
             return GenerateDropFromWeightedSelection(rng, weighted);
+        }
+    }
+
+    public class FuckWithCollisions : MonoBehaviour
+    {
+        private bool disableCollision = false;
+
+        public KinematicCharacterMotor kcmotor;
+
+        public void Start()
+        {
+            kcmotor = GetComponent<KinematicCharacterMotor>();
+        }
+
+        public void FixedUpdate()
+        {
+            if (kcmotor)
+            {
+                if (Random.Range(0f, 1f) < 0.00009f)
+                    StartCoroutine(ToggleCollision());
+                if (disableCollision)
+                {
+                    kcmotor.CollidableLayers = LayerMask.NameToLayer("TriggerZone");
+                }
+                else
+                {
+                    kcmotor.CollidableLayers = -20411191;
+                }
+            }
+        }
+
+        private IEnumerator ToggleCollision()
+        {
+            disableCollision = true;
+            yield return new WaitForSeconds(2f);
+            disableCollision = false;
         }
     }
 }

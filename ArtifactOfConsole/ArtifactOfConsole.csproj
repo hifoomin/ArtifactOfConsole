@@ -20,7 +20,10 @@
     <PackageReference Include="BepInEx.Core" Version="5.4.19" />
     <PackageReference Include="RiskOfRain2.GameLibs" Version="1.2.4-r.0" />
     <PackageReference Include="UnityEngine.Modules" Version="2019.4.26" />
-	<PackageReference Include="R2API.Core" Version="5.0.4" />
+	<PackageReference Include="R2API.Core" Version="5.0.10" />
+	<PackageReference Include="R2API.Language" Version="1.0.1" />
+	<PackageReference Include="R2API.RecalculateStats" Version="1.2.0" />
+	<PackageReference Include="R2API.ContentManagement" Version="1.0.2" />
   </ItemGroup>
 
   <ItemGroup>

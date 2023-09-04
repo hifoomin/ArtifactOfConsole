@@ -20,7 +20,7 @@ namespace ArtifactOfConsole
 
         public const string PluginAuthor = "HIFU";
         public const string PluginName = "ArtifactOfConsole";
-        public const string PluginVersion = "1.0.0";
+        public const string PluginVersion = "1.1.0";
 
         public static AssetBundle artifactofconsole;
 
